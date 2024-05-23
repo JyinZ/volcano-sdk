@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jyinz/volcano-sdk"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"zhuiyi.ai/face/internal/pkg/volcano"
 )
 
 const (
@@ -57,12 +57,11 @@ type (
 	}
 
 	UploadResponse struct {
-		BaseResp  BaseResponse `json:"BaseResp"`
-		SpeakerId string       `json:"speaker_id"`
+		SpeakerId string `json:"speaker_id"`
 	}
 
 	StatusResponse struct {
-		UploadResponse
+		SpeakerId  string         `json:"speaker_id"`
 		CreateTime int64          `json:"create_time"`
 		Version    string         `json:"version"`
 		DemoAudio  string         `json:"demo_audio"`
@@ -81,26 +80,26 @@ type OpenSpeech struct {
 	AccessToken string
 	AppID       string
 
-	volcano.OpenApi
+	*OpenApi
 }
 
 // Upload 上传音频素材进行训练
-func (c *OpenSpeech) Upload(ctx context.Context, ur *UploadRequest) (*UploadResponse, error) {
+func (c *OpenSpeech) Upload(ctx context.Context, ur *UploadRequest) (string, error) {
 	ur.AppID = c.AppID
 
 	rb, err := c.do(ctx, "/api/v1/mega_tts/audio/upload", ur)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	rsp := new(UploadResponse)
 
 	err = json.Unmarshal(rb, rsp)
 	if err != nil {
-		return nil, fmt.Errorf("parse data failed: %w", err)
+		return "", fmt.Errorf("parse data failed: %w", err)
 	}
 
-	return rsp, nil
+	return rsp.SpeakerId, nil
 }
 
 // Status 查询训练状态，仅在音色激活前可用，激活一段时间后使用将无法获取音色状态。
@@ -146,13 +145,20 @@ func (c *OpenSpeech) do(ctx context.Context, path string, body any) ([]byte, err
 
 	defer rsp.Body.Close()
 
-	//if rsp.StatusCode != http.StatusOK {
-	//	return nil, fmt.Errorf("response code: %s", rsp.Status)
-	//}
-
 	rb, err := io.ReadAll(rsp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// 请求失败，解析错误原因
+	if rsp.StatusCode != http.StatusOK {
+		var ret BaseResponse
+		err = json.Unmarshal(rb, &ret)
+		if err != nil {
+			return nil, fmt.Errorf("parse base response failed: %w", err)
+		}
+
+		return nil, fmt.Errorf("bad response: %w", NewError(ret.StatusCode))
 	}
 
 	return rb, nil
@@ -171,10 +177,10 @@ type (
 	}
 )
 
-func New(cfg Config) OpenSpeech {
-	return OpenSpeech{
+func New(cfg Config) *OpenSpeech {
+	return &OpenSpeech{
 		AccessToken: cfg.AccessToken,
 		AppID:       cfg.AppID,
-		OpenApi:     volcano.NewOpenApi(cfg.Config),
+		OpenApi:     NewOpenApi(cfg.Config),
 	}
 }

@@ -1,13 +1,13 @@
-package volcano
+package mega
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jyinz/volcano-sdk"
 	"io"
 	"net/http"
-	"net/url"
 )
 
 // open api info
@@ -90,10 +90,14 @@ type (
 	ActiveResponse = ListResponse
 )
 
+type OpenApi struct {
+	volcano.OpenApi
+}
+
 // LiseMegaTTSTrainStatus 查询已购买的音色状态
 // 如果SpeakerIDs为空则返回账号的AppID下所有的列表（有最大值限制1000）
 // 如果SpeakerIDs不为空则返回对应的结果，且结果总是包含输入的SpeakerID（即使查询不到它） (ps：经测试，若包含错误的SpeakerID会返回错误)
-func (c *OpenApi) LiseMegaTTSTrainStatus(ctx context.Context, lr *LiseMegaTTSTrainStatusRequest) (*ListResponse, error) {
+func (c *OpenApi) LiseMegaTTSTrainStatus(ctx context.Context, lr *LiseMegaTTSTrainStatusRequest) (*SpeakerList, error) {
 	u := c.buildUrl("ListMegaTTSTrainStatus")
 
 	return c.post(ctx, u, lr)
@@ -101,7 +105,7 @@ func (c *OpenApi) LiseMegaTTSTrainStatus(ctx context.Context, lr *LiseMegaTTSTra
 
 // BatchListMegaTTSTrainStatus 查询已购买的音色状态；相比ListMegaTTSTrainStatus 增加了分页相关参数和返回；支持使用token和声明页数两种分页方式
 // 分页token在最后一页为空；分页token采用私有密钥进行加密
-func (c *OpenApi) BatchListMegaTTSTrainStatus(ctx context.Context, blr *BatchListMegaTTSTrainStatusRequest) (*ListResponse, error) {
+func (c *OpenApi) BatchListMegaTTSTrainStatus(ctx context.Context, blr *BatchListMegaTTSTrainStatusRequest) (*SpeakerList, error) {
 	u := c.buildUrl("BatchListMegaTTSTrainStatus")
 
 	return c.post(ctx, u, blr)
@@ -111,27 +115,28 @@ func (c *OpenApi) BatchListMegaTTSTrainStatus(ctx context.Context, blr *BatchLis
 // 如果输入的音色列表中有一个或多个音色不能被激活，或找不到它的记录，那么所有的音色都不会被激活，并且会返回错误 OperationDenied.InvalidSpeakerID
 // 如果输入的音色列表为空，那么返回字段不合法的错误OperationDenied.InvalidParameter
 // 距离音色可被访问可能会有分钟级别延迟
-func (c *OpenApi) ActivateMegaTTSTrainStatus(ctx context.Context, ar *ActivateMegaTTSTrainStatusRequest) (*ActiveResponse, error) {
+func (c *OpenApi) ActivateMegaTTSTrainStatus(ctx context.Context, ar *ActivateMegaTTSTrainStatusRequest) (SpeakerTrainStatus, error) {
 	u := c.buildUrl("ActivateMegaTTSTrainStatus")
 
-	return c.post(ctx, u, ar)
+	speakders, err := c.post(ctx, u, ar)
+	if err != nil {
+		return SpeakerTrainStatus{}, err
+	}
+
+	for _, status := range speakders.Statuses {
+		return status, nil
+	}
+
+	return SpeakerTrainStatus{}, err
 }
 
 func (c *OpenApi) buildUrl(action string) string {
-	u := url.URL{
-		Scheme: _Scheme,
-		Host:   _Host,
-		Path:   _Path,
-		RawQuery: url.Values{
-			"Version": []string{_Version},
-			"Action":  []string{action},
-		}.Encode(),
-	}
+	u := c.BuildUrl(_Path, _Version, action)
 
 	return u.String()
 }
 
-func (c *OpenApi) post(ctx context.Context, url string, body any) (*ListResponse, error) {
+func (c *OpenApi) post(ctx context.Context, url string, body any) (*SpeakerList, error) {
 	b, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
@@ -143,7 +148,7 @@ func (c *OpenApi) post(ctx context.Context, url string, body any) (*ListResponse
 	return do(c.Sign(req))
 }
 
-func do[T ListResponse](req *http.Request) (*T, error) {
+func do(req *http.Request) (*SpeakerList, error) {
 	rsp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -151,31 +156,34 @@ func do[T ListResponse](req *http.Request) (*T, error) {
 
 	defer rsp.Body.Close()
 
-	if rsp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("response code: %s", rsp.Status)
-	}
-
 	rb, err := io.ReadAll(rsp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var ret = new(T)
+	var ret = new(ListResponse)
 	err = json.Unmarshal(rb, ret)
 	if err != nil {
 		return nil, fmt.Errorf("parse data failed: %w", err)
 	}
 
-	return ret, nil
+	// 请求失败，解析错误原因
+	if _err := ret.ResponseMetadata.Error; _err != nil {
+		return nil, fmt.Errorf("response error(%s): code = %s, desc = %s", rsp.Status, _err.Code, _err.Message)
+	}
+
+	return &ret.Result, nil
 }
 
-func NewOpenApi(cfg Config) OpenApi {
-	return OpenApi{
-		Credentials: Credentials{
-			AccessKeyID:     cfg.AccessKey,
-			SecretAccessKey: cfg.SecretKey,
-			Service:         _Service,
-			Region:          _Region,
+func NewOpenApi(cfg volcano.Config) *OpenApi {
+	return &OpenApi{
+		volcano.OpenApi{
+			Credentials: volcano.Credentials{
+				AccessKeyID:     cfg.AccessKey,
+				SecretAccessKey: cfg.SecretKey,
+				Service:         _Service,
+				Region:          _Region,
+			},
 		},
 	}
 }
