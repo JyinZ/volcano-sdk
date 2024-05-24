@@ -50,12 +50,12 @@ type (
 		Text            string `json:"text"`                       // 文本，合成语音的文本，长度限制 1024 字节（UTF-8编码）。复刻音色没有此限制，但是HTTP接口有60s超时限制
 		TextType        string `json:"text_type,omitempty"`        // 文本类型，plain / ssml, 默认为plain
 		Operation       string `json:"operation"`                  // 操作，query（非流式，http只能query） / submit（流式）
-		SilenceDuration string `json:"silence_duration,omitempty"` // 句尾静音时长，单位为ms，默认为125
+		SilenceDuration int    `json:"silence_duration,omitempty"` // 句尾静音时长，单位为ms，默认为125
 		WithFrontend    int    `json:"with_frontend,omitempty"`    // 时间戳相关，当with_frontend为1且frontend_type为unitTson的时候，返回音素级时间戳
 		FrontendType    string `json:"frontend_type,omitempty"`    // unitTson
 		WithTimestamp   int    `json:"with_timestamp,omitempty"`   // 新版时间戳参数，可用来替换with_frontend和frontend_type，可返回原文本的时间戳，而非TN后文本，即保留原文中的阿拉伯数字或者特殊符号等。注意：原文本中的多个标点连用或者空格依然会被处理，但不影响时间戳连贯性
 		SplitSentence   int    `json:"split_sentence,omitempty"`   // 复刻音色语速优化,仅当使用复刻音色时设为1，可优化语速过快问题。有可能会导致时间戳多次返回。
-		PureEnglishOpt  string `json:"pure_english_opt,omitempty"` // 英文前端优化，当pure_english_opt为1的时候，中文音色读纯英文时可以正确处理文本中的阿拉伯数字
+		PureEnglishOpt  int    `json:"pure_english_opt,omitempty"` // 英文前端优化，当pure_english_opt为1的时候，中文音色读纯英文时可以正确处理文本中的阿拉伯数字
 	}
 
 	// SynRequest 合成请求体
@@ -69,6 +69,7 @@ type (
 
 func (sr *SynRequest) wsMsg(appID string) (msg []byte) {
 	sr.App.AppID = appID
+	sr.Request.Operation = "submit"
 	input, _ := json.Marshal(sr)
 	input = gzipCompress(input)
 
@@ -187,9 +188,12 @@ func (ret *SynResult) parse(b []byte) (err error) {
 			return
 		}
 
-		err = json.Unmarshal([]byte(fb.Frontend), &ret.Frontend)
-		if err != nil {
-			return
+		// 解析时间戳信息
+		if fb.Frontend != "" {
+			err = json.Unmarshal([]byte(fb.Frontend), &ret.Frontend)
+			if err != nil {
+				return
+			}
 		}
 
 	case 0xf: // error message from server
