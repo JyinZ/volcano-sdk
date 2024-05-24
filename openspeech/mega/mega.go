@@ -178,18 +178,11 @@ func (c *OpenSpeech) do(ctx context.Context, path string, body any) ([]byte, err
 	return rb, nil
 }
 
-type (
-	OpenAPIConfig struct {
-		AccessKey string `json:"access_key" yaml:"access_key"`
-		SecretKey string `json:"secret_key" yaml:"secret_key"`
-	}
-
-	Config struct {
-		volcano.Config
-		AccessToken string `json:"access_token" yaml:"access_token"`
-		AppID       string `json:"app_id" yaml:"app_id"`
-	}
-)
+type Config struct {
+	volcano.Config
+	AccessToken string `json:"access_token" yaml:"access_token"`
+	AppID       string `json:"app_id" yaml:"app_id"`
+}
 
 func New(cfg Config) *OpenSpeech {
 	return &OpenSpeech{
