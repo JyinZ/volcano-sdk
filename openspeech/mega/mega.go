@@ -80,7 +80,7 @@ type OpenSpeech struct {
 	AccessToken string
 	AppID       string
 
-	*OpenApi
+	openapi *OpenApi
 }
 
 // Upload 上传音频素材进行训练
@@ -118,6 +118,20 @@ func (c *OpenSpeech) Status(ctx context.Context, mr *StatusRequest) (*StatusResp
 	}
 
 	return rsp, nil
+}
+
+// ListSpeakers 获取音色列表，对open接口的简单封装调用
+func (c *OpenSpeech) ListSpeakers(ctx context.Context, blr *BatchListMegaTTSTrainStatusRequest) (*SpeakerList, error) {
+	blr.AppID = c.AppID
+
+	return c.openapi.BatchListMegaTTSTrainStatus(ctx, blr)
+}
+
+// ActivateSpeakers 激活音色，即锁定使音色不再能够训练
+func (c *OpenSpeech) ActivateSpeakers(ctx context.Context, ar *ActivateMegaTTSTrainStatusRequest) ([]SpeakerTrainStatus, error) {
+	ar.AppID = c.AppID
+
+	return c.openapi.ActivateMegaTTSTrainStatus(ctx, ar)
 }
 
 func (c *OpenSpeech) do(ctx context.Context, path string, body any) ([]byte, error) {
@@ -181,6 +195,6 @@ func New(cfg Config) *OpenSpeech {
 	return &OpenSpeech{
 		AccessToken: cfg.AccessToken,
 		AppID:       cfg.AppID,
-		OpenApi:     NewOpenApi(cfg.Config),
+		openapi:     NewOpenApi(cfg.Config),
 	}
 }

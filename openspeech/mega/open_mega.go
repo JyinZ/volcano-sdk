@@ -97,10 +97,15 @@ type OpenApi struct {
 // LiseMegaTTSTrainStatus 查询已购买的音色状态
 // 如果SpeakerIDs为空则返回账号的AppID下所有的列表（有最大值限制1000）
 // 如果SpeakerIDs不为空则返回对应的结果，且结果总是包含输入的SpeakerID（即使查询不到它） (ps：经测试，若包含错误的SpeakerID会返回错误)
-func (c *OpenApi) LiseMegaTTSTrainStatus(ctx context.Context, lr *LiseMegaTTSTrainStatusRequest) (*SpeakerList, error) {
+func (c *OpenApi) LiseMegaTTSTrainStatus(ctx context.Context, lr *LiseMegaTTSTrainStatusRequest) ([]SpeakerTrainStatus, error) {
 	u := c.buildUrl("ListMegaTTSTrainStatus")
 
-	return c.post(ctx, u, lr)
+	ls, err := c.post(ctx, u, lr)
+	if err != nil {
+		return nil, err
+	}
+
+	return ls.Statuses, nil
 }
 
 // BatchListMegaTTSTrainStatus 查询已购买的音色状态；相比ListMegaTTSTrainStatus 增加了分页相关参数和返回；支持使用token和声明页数两种分页方式
@@ -115,19 +120,15 @@ func (c *OpenApi) BatchListMegaTTSTrainStatus(ctx context.Context, blr *BatchLis
 // 如果输入的音色列表中有一个或多个音色不能被激活，或找不到它的记录，那么所有的音色都不会被激活，并且会返回错误 OperationDenied.InvalidSpeakerID
 // 如果输入的音色列表为空，那么返回字段不合法的错误OperationDenied.InvalidParameter
 // 距离音色可被访问可能会有分钟级别延迟
-func (c *OpenApi) ActivateMegaTTSTrainStatus(ctx context.Context, ar *ActivateMegaTTSTrainStatusRequest) (SpeakerTrainStatus, error) {
+func (c *OpenApi) ActivateMegaTTSTrainStatus(ctx context.Context, ar *ActivateMegaTTSTrainStatusRequest) ([]SpeakerTrainStatus, error) {
 	u := c.buildUrl("ActivateMegaTTSTrainStatus")
 
-	speakders, err := c.post(ctx, u, ar)
+	ls, err := c.post(ctx, u, ar)
 	if err != nil {
-		return SpeakerTrainStatus{}, err
+		return nil, err
 	}
 
-	for _, status := range speakders.Statuses {
-		return status, nil
-	}
-
-	return SpeakerTrainStatus{}, err
+	return ls.Statuses, nil
 }
 
 func (c *OpenApi) buildUrl(action string) string {
