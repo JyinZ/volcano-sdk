@@ -97,7 +97,7 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 	}
 
 	if !wsRsp.Started() {
-		return fmt.Errorf("fisrt event mismatched")
+		return fmt.Errorf("fisrt event mismatched(%s), code=%d, msg=%s", wsRsp.Event, wsRsp.StatusCode, wsRsp.StatusText)
 	}
 
 	go func() {
@@ -112,7 +112,8 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 			_ = conn.WriteMessage(websocket.TextMessage, fnsMsg)
 		}()
 
-		step := 3200
+		// 每个包大小，按每秒25包算，TODO:使用参数传递
+		step := vcr.AudioInfo.SampleRate * vcr.AudioInfo.Channel * 16 / 8 / 25
 		// 用于数据重组，平滑数据发送
 		var buf bytes.Buffer
 		for chunk := range audio {
@@ -124,6 +125,7 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 					cancel(fmt.Errorf("send data failed :%w", err))
 					return
 				}
+
 			}
 		}
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jyinz/volcano-sdk"
 	"github.com/jyinz/volcano-sdk/sami/vc"
+	"time"
 )
 
 func main() {
@@ -19,8 +20,14 @@ func main() {
 	audio := make(chan []byte, 64)
 	go func() {
 		defer close(audio)
+
+		// 16k单声道，每秒25帧速率发送,每帧1280字节
+		tcr := time.NewTicker(40 * time.Millisecond)
+		defer tcr.Stop()
+
 		for i := 0; i < 1000; i++ {
 			audio <- make([]byte, 1280)
+			<-tcr.C
 		}
 	}()
 

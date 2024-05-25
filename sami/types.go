@@ -6,6 +6,8 @@ const (
 	EventFinishTask   = "FinishTask"
 	EventTaskFinished = "TaskFinished"
 	EventTaskRequest  = "TaskRequest"
+	EventTaskResponse = "TaskResponse"
+	EventTaskFailed   = "TaskFailed"
 )
 
 type (
