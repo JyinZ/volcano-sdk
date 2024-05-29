@@ -46,6 +46,6 @@ func NewError(code int) error {
 
 func Translate(err error) string {
 	var e = new(Error)
-	errors.As(err, e)
+	errors.As(err, &e)
 	return e.Message()
 }
