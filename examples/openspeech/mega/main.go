@@ -11,7 +11,7 @@ func main() {
 	cfg := mega.Config{
 		Config: volcano.Config{
 			AccessKey: "",
-			SecretKey: "",
+			SecretKey: "==",
 		},
 		AccessToken: "",
 		AppID:       "",

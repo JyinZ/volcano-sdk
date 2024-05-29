@@ -44,8 +44,11 @@ func NewError(code int) error {
 	}
 }
 
+// Translate 翻译声音复刻返回码
 func Translate(err error) string {
 	var e = new(Error)
-	errors.As(err, &e)
-	return e.Message()
+	if errors.As(err, &e) {
+		return e.Message()
+	}
+	return err.Error()
 }

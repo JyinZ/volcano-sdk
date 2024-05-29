@@ -179,9 +179,9 @@ func (c *OpenSpeech) do(ctx context.Context, path string, body any) ([]byte, err
 }
 
 type Config struct {
-	volcano.Config
-	AccessToken string `json:"access_token" yaml:"access_token"`
-	AppID       string `json:"app_id" yaml:"app_id"`
+	volcano.Config `yaml:",inline"`
+	AccessToken    string `json:"access_token" yaml:"access_token"`
+	AppID          string `json:"app_id" yaml:"app_id"`
 }
 
 func New(cfg Config) *OpenSpeech {
