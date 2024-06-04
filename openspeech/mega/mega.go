@@ -71,7 +71,7 @@ type (
 
 // TrainingCount 将返回中的训练版本转换为训练次数
 func (r StatusResponse) TrainingCount() int {
-	version := strings.TrimSuffix(r.Version, "V")
+	version := strings.TrimPrefix(r.Version, "V")
 	vn, _ := strconv.Atoi(version)
 	return vn
 }
