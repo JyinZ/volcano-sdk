@@ -1,7 +1,6 @@
 package vc
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,21 +54,29 @@ func (vcr VoiceConversionRequest) wsMsg(ak, tkn string) []byte {
 
 type VoiceConversion struct {
 	appKey string
-	token  *sami.Token
+	*sami.Token
 }
 
+// Conversion 对输入音频进行音色转换
 func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionRequest, audio <-chan []byte, cb func([]byte)) error {
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
+	spk, err := c.CreateSpeaker(ctx, vcr)
+	if err != nil {
+		return fmt.Errorf("init speaker failed: %w", err)
+	}
 
+	return spk.Speak(ctx, audio, cb)
+}
+
+// CreateSpeaker 生成一个Speaker用于进行音色转换，提前生成Speaker可以降低延迟
+func (c *VoiceConversion) CreateSpeaker(ctx context.Context, vcr VoiceConversionRequest) (Speaker, error) {
 	// 获取token
-	if c.token.Expired() {
-		err := c.token.Refresh(ctx, c.appKey)
+	if c.Expired() {
+		err := c.Refresh(ctx, c.appKey, 12*3600)
 		if err != nil {
-			return fmt.Errorf("get token failed: %w", err)
+			return nil, fmt.Errorf("get token failed: %w", err)
 		}
 	}
-	token := c.token.Token()
+	token := c.Token.Token()
 
 	u := url.URL{Scheme: "wss", Host: _Host, Path: "/api/v1/ws"}
 	conn, rsp, err := websocket.DefaultDialer.DialContext(ctx, u.String(), http.Header{})
@@ -77,15 +84,15 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 		if errors.Is(err, websocket.ErrBadHandshake) {
 			defer rsp.Body.Close()
 			b, _ := io.ReadAll(rsp.Body)
-			return fmt.Errorf("%w, reason:%s", err, string(b))
+			return nil, fmt.Errorf("%w, reason:%s", err, string(b))
 		}
-		return err
+		return nil, err
 	}
 	defer conn.Close()
 
 	err = conn.WriteMessage(websocket.TextMessage, vcr.wsMsg(c.appKey, token))
 	if err != nil {
-		return fmt.Errorf("send config failed: %w", err)
+		return nil, fmt.Errorf("send config failed: %w", err)
 	}
 
 	// 等待第一个回包，校验服务端是否完成配置,TODO: 返回包错误处理
@@ -93,52 +100,68 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 	var wsRsp sami.WebSocketResponse
 	err = conn.ReadJSON(&wsRsp)
 	if err != nil {
-		return fmt.Errorf("read first event failed: %w", err)
+		return nil, fmt.Errorf("read first event failed: %w", err)
 	}
 
 	if !wsRsp.Started() {
-		return fmt.Errorf("fisrt event mismatched(%s), code=%d, msg=%s", wsRsp.Event, wsRsp.StatusCode, wsRsp.StatusText)
+		return nil, fmt.Errorf("fisrt event mismatched(%s), code=%d, msg=%s", wsRsp.Event, wsRsp.StatusCode, wsRsp.StatusText)
 	}
+
+	fnsMsg, _ := json.Marshal(sami.WebSocketRequest{
+		Token:     token,    // 尾包可传空
+		Appkey:    c.appKey, // 尾包可传空
+		Namespace: _Namespace,
+		Event:     sami.EventFinishTask,
+	})
+
+	return &speaker{
+		ctx:    ctx,
+		c:      conn,
+		fnsMsg: fnsMsg,
+	}, nil
+}
+
+type (
+	Speaker interface {
+		Speak(context.Context, <-chan []byte, func([]byte)) error
+	}
+
+	speaker struct {
+		ctx context.Context
+		c   *websocket.Conn
+
+		// 尾包数据
+		fnsMsg []byte
+	}
+)
+
+func (s *speaker) Speak(ctx context.Context, chunks <-chan []byte, cb func([]byte)) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	go func() {
 		defer func() {
 			// 数据发送完毕时发送尾包
-			fnsMsg, _ := json.Marshal(sami.WebSocketRequest{
-				Token:     token,
-				Appkey:    c.appKey,
-				Namespace: _Namespace,
-				Event:     sami.EventFinishTask,
-			})
-			_ = conn.WriteMessage(websocket.TextMessage, fnsMsg)
+			_ = s.c.WriteMessage(websocket.TextMessage, s.fnsMsg)
+
+			// 释放chunks避免前序阻塞
+			for range chunks {
+			}
 		}()
 
-		// 每个包大小，按每秒25包算，TODO:使用参数传递
-		step := vcr.AudioInfo.SampleRate * vcr.AudioInfo.Channel * 16 / 8 / 25
-		// 用于数据重组，平滑数据发送
-		var buf bytes.Buffer
-		for chunk := range audio {
-			buf.Write(chunk)
-
-			for buf.Len() > step {
-				err := conn.WriteMessage(websocket.BinaryMessage, buf.Next(step))
-				if err != nil {
-					cancel(fmt.Errorf("send data failed :%w", err))
-					return
-				}
-
+		for chunk := range chunks {
+			err := s.c.WriteMessage(websocket.BinaryMessage, chunk)
+			if err != nil {
+				cancel(fmt.Errorf("send data failed :%w", err))
+				return
 			}
 		}
 
-		err := conn.WriteMessage(websocket.BinaryMessage, buf.Bytes())
-		if err != nil {
-			cancel(fmt.Errorf("send data failed :%w", err))
-			return
-		}
 	}()
 
 	// 同步接收返回
 	for {
-		mt, msg, err := conn.ReadMessage()
+		mt, msg, err := s.c.ReadMessage()
 		if err != nil {
 			cancel(fmt.Errorf("recv failed: %w", err))
 			return context.Cause(ctx)
@@ -149,6 +172,7 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 			continue
 		}
 
+		var wsRsp sami.WebSocketResponse
 		err = json.Unmarshal(msg, &wsRsp)
 		if err != nil {
 			cancel(fmt.Errorf("parse data failed: %w", err))
@@ -167,7 +191,7 @@ func (c *VoiceConversion) Conversion(ctx context.Context, vcr VoiceConversionReq
 		}
 	}
 
-	return nil
+	return context.Cause(ctx)
 }
 
 type Config struct {
@@ -178,6 +202,6 @@ type Config struct {
 func New(cfg Config) *VoiceConversion {
 	return &VoiceConversion{
 		appKey: cfg.AppKey,
-		token:  sami.NewOpenApi(cfg.Config),
+		Token:  sami.NewOpenApi(cfg.Config),
 	}
 }

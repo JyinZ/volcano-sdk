@@ -55,10 +55,10 @@ func (tkn *Token) Expired() bool {
 }
 
 // Refresh 刷新token
-func (tkn *Token) Refresh(ctx context.Context, appKey string) error {
+func (tkn *Token) Refresh(ctx context.Context, appKey string, expire int64) error {
 	rsp, err := tkn.GetToken(ctx, GetTokenRequest{
 		AppKey:     appKey,
-		Expiration: 3600,
+		Expiration: expire,
 	})
 	if err != nil {
 		return err
@@ -70,8 +70,15 @@ func (tkn *Token) Refresh(ctx context.Context, appKey string) error {
 	return nil
 }
 
+// Token 获取当前token
 func (tkn *Token) Token() string {
 	return tkn.token
+}
+
+// Init 初始化一个token，一般用于测试
+func (tkn *Token) Init(token string, expiredAt int64) {
+	tkn.token = token
+	tkn.expiresAt = expiredAt
 }
 
 func (tkn *Token) GetToken(ctx context.Context, gr GetTokenRequest) (*GetTokenResponse, error) {

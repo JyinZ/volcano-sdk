@@ -25,13 +25,14 @@ func main() {
 		tcr := time.NewTicker(40 * time.Millisecond)
 		defer tcr.Stop()
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 100; i++ {
 			audio <- make([]byte, 1280)
 			<-tcr.C
 		}
 	}()
 
 	cli := vc.New(cfg)
+	size := 0
 	err := cli.Conversion(context.TODO(), vc.VoiceConversionRequest{
 		Speaker: "zh_female_tianmei_stream",
 		AudioInfo: vc.AudioInfo{
@@ -45,15 +46,17 @@ func main() {
 			Format:     "s16le",
 		},
 		Extra: &vc.Extra{
-			DownstreamAlign: true,
+			DownstreamAlign: false,
 		},
 	},
 		audio,
 		func(chunk []byte) {
 			fmt.Println("chunk size:", len(chunk))
+			size += len(chunk)
 		})
 	if err != nil {
 		panic(err)
 	}
 
+	fmt.Println("audio size", size)
 }
