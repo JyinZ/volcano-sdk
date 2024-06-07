@@ -11,7 +11,7 @@ func main() {
 	cfg := mega.Config{
 		Config: volcano.Config{
 			AccessKey: "",
-			SecretKey: "==",
+			SecretKey: "",
 		},
 		AccessToken: "",
 		AppID:       "",
@@ -32,6 +32,6 @@ func main() {
 	}
 
 	for _, status := range ls.Statuses {
-		fmt.Println("speaker", status)
+		fmt.Println("speaker:", fmt.Sprintf("%+v", status))
 	}
 }
