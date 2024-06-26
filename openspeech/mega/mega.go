@@ -52,8 +52,10 @@ type (
 
 type (
 	BaseResponse struct {
-		StatusCode    int    `json:"StatusCode"`
-		StatusMessage string `json:"StatusMessage"`
+		BaseResp struct {
+			StatusCode    int    `json:"StatusCode"`
+			StatusMessage string `json:"StatusMessage"`
+		} `json:"base_resp"`
 	}
 
 	UploadResponse struct {
@@ -172,7 +174,7 @@ func (c *OpenSpeech) do(ctx context.Context, path string, body any) ([]byte, err
 			return nil, fmt.Errorf("parse base response failed: %w", err)
 		}
 
-		return nil, fmt.Errorf("bad response: %w", NewError(ret.StatusCode))
+		return nil, fmt.Errorf("bad response: %w", NewError(ret.BaseResp.StatusCode, ret.BaseResp.StatusMessage))
 	}
 
 	return rb, nil

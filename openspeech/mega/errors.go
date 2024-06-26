@@ -15,7 +15,10 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Message() string {
-	return msgs[e.Code][1]
+	if m := msgs[e.Code][1]; m != "" {
+		return m
+	}
+	return e.Msg
 }
 
 var msgs = map[int][2]string{
@@ -37,10 +40,10 @@ var msgs = map[int][2]string{
 	1123: {"MaxUpload", "上传接口已经达到次数限制，目前同一个音色支持10次上传"},
 }
 
-func NewError(code int) error {
+func NewError(code int, msg string) error {
 	return &Error{
 		Code: code,
-		Msg:  msgs[code][0],
+		Msg:  msg,
 	}
 }
 
