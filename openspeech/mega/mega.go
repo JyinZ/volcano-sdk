@@ -55,7 +55,7 @@ type (
 		BaseResp struct {
 			StatusCode    int    `json:"StatusCode"`
 			StatusMessage string `json:"StatusMessage"`
-		} `json:"base_resp"`
+		} `json:"BaseResp"`
 	}
 
 	UploadResponse struct {
